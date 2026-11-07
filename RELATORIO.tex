@@ -1,0 +1,194 @@
+\documentclass[12pt]{article}
+
+\usepackage{sbc-template}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{mathtools}
+\usepackage{icomma}
+\usepackage{titlesec}
+\usepackage{float}
+
+\renewcommand{\tablename}{Tabela}
+\renewcommand{\arraystretch}{1.15}
+\emergencystretch=1.5em
+
+\title{Do Simbólico à Incerteza: Análise do Atraso na Notificação Vacinal do PNI com Inteligência Artificial}
+
+\author{Bruna Brasil\inst{1}, Jamily Oliveira\inst{1}, Luiz Sena\inst{1}, Roberta Brasil\inst{1}}
+
+\address{Departamento de Ciência da Computação -- Universidade Federal do Amazonas (UFAM)\\
+  Manaus -- AM -- Brasil
+  \email{\{bruna.brasil, jamily.oliveira, luiz.sena, roberta.brasil\}@icomp.ufam.edu.br}
+}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução}
+
+A vigilância epidemiológica depende da integridade e continuidade dos registros vacinais. No Brasil, o Programa Nacional de Imunizações (PNI), sob gestão do Ministério da Saúde e do DATASUS, organiza imunizações em escala nacional através da Rede Nacional de Dados em Saúde (RNDS). Diferenças nas condições de registro e conectividade das unidades podem estar associadas ao intervalo entre a aplicação e a inserção dos dados no sistema central.
+
+Notificações tardias podem comprometer a atualização das estimativas de cobertura vacinal e dificultar o monitoramento epidemiológico. A questão investigada neste trabalho é: \textit{Quais características se associam ao tempo de notificação vacinal?}
+
+Partiu-se de 16.000 registros extraídos da API de Dados Abertos do Ministério da Saúde (4.000 por ano, entre 2023 e 2026). Após a remoção de dados inválidos, restaram $N = 15.403$ registros. Trata-se de uma amostra exploratória. No código, \texttt{sistema\_offline}=1 indica que a descrição do sistema de origem contém ``OFFLINE''; o valor 0 identifica os demais sistemas, não necessariamente conexão contínua. A latência contínua é definida por $\Delta t = \text{dt\_entrada} - \text{dt\_vacina}$, expressa como \texttt{dias\_atraso}. A partir dela, formulou-se a variável-alvo binária primordial:
+\begin{equation}
+Y=\begin{cases}
+1, & \text{se }\Delta t>7\text{ dias},\\
+0, & \text{se }0\leq\Delta t\leq7\text{ dias}.
+\end{cases}
+\end{equation}
+Na base analisada, há $7.947$ ocorrências de atraso crítico ($51,59\%$) e $7.456$ no prazo ($48,41\%$), configurando um cenário amostral equilibrado para a modelagem.
+
+\section{Organização do Trabalho}
+
+O trabalho foi dividido em seis etapas: (1) árvore de decisão; (2) regressões linear e logística; (3) teoria da probabilidade; (4) MLE, MAP, Naive Bayes e EM; (5) Redes Bayesianas; e (6) lógica fuzzy. As etapas utilizam a mesma base e avançam da identificação de padrões para a modelagem probabilística e o apoio gradual à decisão.
+
+\section{Etapa 1 -- Árvore de Decisão}
+
+A primeira etapa utilizou uma implementação de árvore de decisão para prever \texttt{atraso\_critico}, definido como uma notificação realizada mais de sete dias após a vacinação. A seleção dos atributos foi feita por entropia e ganho de informação:
+\begin{align}
+H(S)&=-\sum_c p_c\log_2(p_c),\\
+IG(S,X)&=H(S)-\sum_v\frac{|S_v|}{|S|}H(S_v).
+\end{align}
+
+No primeiro ciclo, a entropia foi de $0,9993$ bits. O atributo \texttt{sistema\_offline} apresentou o maior ganho de informação ($0,2133$ bits), acima de fabricante ($0,0441$), faixa etária ($0,0378$), mesmo município ($0,0360$) e região ($0,0177$). Entre os registros classificados como offline, 77,43\% apresentaram atraso; nos demais sistemas, a proporção foi de 24,44\%.
+
+A árvore foi avaliada por validação cruzada com 5 dobras e obteve acurácia média de \textbf{76,53\%}, com F1 médio de 77,47\%. A etapa também demonstrou, por meio de um exemplo simulado, a não-monotonicidade do aprendizado indutivo: ao adicionar novos exemplos, a árvore pode alterar uma regra ou classificação anteriormente aprendida, diferentemente do comportamento monotônico da Lógica de Primeira Ordem.
+
+\section{Etapa 2 -- Aprendizado Linear}
+
+A segunda etapa modelou o atraso contínuo por $y=\ln(1+\texttt{dias\_atraso})$. Na regressão linear univariada por mínimos quadrados, obteve-se:
+\begin{equation}
+\hat y=2,2492+0,7772x,
+\end{equation}
+com $R^2=0,2781$ e MSE de $1,7470$ no teste. A regressão multivariada por gradiente descendente elevou o $R^2$ para $0,3015$, com MSE de $1,6904$.
+
+Também foi testada regularização Ridge. Entretanto, algumas execuções apresentaram \textit{overflow} e valores \texttt{NaN}, portanto o material atual não permite afirmar um $\lambda$ ótimo confiável. Para a classificação binária, a regressão logística implementada por gradiente alcançou \textbf{77,47\% de acurácia}, 78,25\% de precisão, 78,05\% de recall e 78,15\% de F1.
+
+\section{Etapa 3 -- Teoria da Probabilidade}
+
+A distribuição conjunta entre origem do sistema ($S$) e atraso crítico ($A$) foi calculada e validada, com soma das probabilidades igual a 1. As principais probabilidades foram:
+\begin{align}
+P(A=1\mid S=0)&=0,2444,\\
+P(A=1\mid S=1)&=0,7743.
+\end{align}
+Assim, na amostra, a proporção de atraso no grupo offline foi aproximadamente $3,17$ vezes a observada nos demais sistemas. Pelo Teorema de Bayes:
+\begin{equation}
+P(S=1\mid A=1)=\frac{0,7743\cdot0,5125}{0,5159}\approx\mathbf{0,7691}.
+\end{equation}
+Logo, 76,91\% dos registros atrasados pertenciam ao grupo classificado como offline.
+
+Também foi verificada a hipótese de independência condicional usada pelo Naive Bayes. Para fabricante Pfizer e faixa etária idoso, condicionados ao atraso, foram obtidos $P(X,Y\mid A)=0,01422$ e $P(X\mid A)P(Y\mid A)=0,00392$. Como os valores diferem de 0,06, esse teste apresentou uma grande chance de independência condicional.
+
+\section{Etapa 4 -- MLE, MAP, Naive Bayes e EM}
+
+No conjunto de treino, com $n=12.322$ e $k=6.357$ atrasos, as estimativas MLE e MAP com prior $\operatorname{Beta}(2,2)$ foram praticamente iguais:
+\begin{align}
+\hat\theta_{\mathrm{MLE}}&=\frac{6.357}{12.322}=0,51591,\\
+\hat\theta_{\mathrm{MAP}}&=\frac{6.358}{12.324}=0,51590.
+\end{align}
+A diferença pequena ocorre pelo grande volume de dados; em amostras reduzidas, o MAP evita estimativas extremas e o MLE varia bastante entre 0\% a 100\%. O Naive Bayes obteve \textbf{75,79\% de acurácia} e F1 de 75,70\%.
+
+Em seguida, o algoritmo EM foi aplicado a $x=\ln(1+\texttt{dias\_atraso})$ com uma mistura de duas gaussianas. Após 30 iterações, foram identificadas duas componentes estatísticas: uma de menor atraso, com peso $0,421$ e média aproximada de 0,9 dia, e outra de maior atraso, com peso $0,579$ e média aproximada de 29,1 dias. Ao adicionar a componente latente $Z$ ao Naive Bayes, a acurácia registrada subiu para 93,77\%.
+
+\section{Etapa 5 -- Redes Bayesianas}
+
+A Rede Bayesiana foi construída com cinco variáveis binárias: região ($R$), origem do sistema ($S$), grupo vulnerável ($V$), fabricante ($N$) e atraso crítico ($A$). O DAG proposto utiliza as relações $R\to S$, $S\to A$, $V\to N$ e $N\to A$, resultando na fatoração:
+\begin{equation}
+P(R,S,V,N,A)=P(R)P(S\mid R)P(V)P(N\mid V)P(A\mid S,N).
+\end{equation}
+Essas arestas representam hipóteses de modelagem, não relações causais comprovadas pelos dados.
+
+A rede contém a cadeia $R\to S\to A$ e o colisor $S\to A\leftarrow N$. Na inferência por enumeração, obteve-se $P(A=1\mid S=1,N=1)=0,7458$, valor confirmado com o pacote \texttt{pgmpy}. A principal vantagem da estrutura foi a redução de parâmetros: uma distribuição conjunta completa com cinco variáveis binárias exigiria 31 parâmetros livres, enquanto o DAG proposto utiliza apenas 10, uma redução de \textbf{67,74\%}.
+
+\section{Etapa 6 -- Lógica Fuzzy}
+
+A última etapa transforma o risco probabilístico em uma prioridade gradual de acompanhamento. Foi implementado um sistema Fuzzy Mamdani com duas entradas: o risco bayesiano $r=P(A=1\mid\mathbf e)$ e uma vulnerabilidade $v$ de 0 a 100. A saída é a urgência $u$, também de 0 a 100. Cada variável possui conjuntos linguísticos baixo, médio e alto, permitindo que um valor tenha diferentes graus de pertinência ao mesmo tempo.
+
+Foram implementadas cinco regras. Em resumo, risco e vulnerabilidade altos geram urgência alta; risco médio gera urgência média; risco baixo tende a gerar urgência baixa, exceto quando combinado com vulnerabilidade alta. A saída final é calculada pelo método do centróide:
+\begin{equation}
+u^*=\frac{\int u\,\mu(u)\,du}{\int \mu(u)\,du}.
+\end{equation}
+
+A integração foi testada em três \textbf{cenários ilustrativos}, e não em unidades reais identificadas:
+\begin{table}[H]
+\centering
+\caption{Resultados dos cenários utilizados na etapa fuzzy.}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Cenário} & \textbf{Risco} & \textbf{Vulnerabilidade} & \textbf{Urgência} \\
+\midrule
+Posto rural remoto & 74,58\% & 85\% & \textbf{64,61} \\
+Unidade urbana central & 30,59\% & 30\% & \textbf{38,79} \\
+Unidade de fronteira & 17,58\% & 65\% & \textbf{23,90} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Diferentemente de um limiar rígido, a lógica fuzzy permite transições graduais entre níveis de prioridade. Nesse trabalho, ela funciona como uma camada de apoio à decisão sobre as probabilidades produzidas nas etapas anteriores, sem representar uma intervenção real já validada no SUS.
+
+\section{Considerações Finais}
+
+As seis etapas permitiram analisar o atraso de notificação vacinal sob diferentes perspectivas. A árvore de decisão destacou \texttt{sistema\_offline} como o atributo de maior ganho de informação e obteve 76,53\% de acurácia média. A regressão logística alcançou 77,47\%, enquanto o Naive Bayes puro obteve 75,79\%. A análise probabilística mostrou maior proporção de atrasos no grupo offline, e a Rede Bayesiana reduziu a parametrização de 31 para 10 valores. O EM identificou dois componentes de atraso, elevando a acurácia para 93,77\%. Por fim, a lógica fuzzy integrou risco e vulnerabilidade em escores graduais de urgência. Assim, o trabalho demonstra a integração entre técnicas simbólicas, estatísticas, probabilísticas e fuzzy, preservando as limitações dos experimentos realizados.
+
+\appendix
+\section{Metodologia, Reprodutibilidade e Uso de IA}
+
+Os notebooks das seis etapas e os módulos Python estão disponíveis no repositório do grupo (\url{https://github.com/Gabsz193/saude_publica_equipe_2}). O projeto utiliza bibliotecas como \texttt{numpy}, \texttt{pandas}, \texttt{scikit-learn}, \texttt{pgmpy} e \texttt{scikit-fuzzy}; as instruções de execução constam no \texttt{README.md}. Foi adotada semente aleatória fixa nas etapas que envolvem amostragem ou inicialização.
+
+\textbf{Registro do uso de IA:} houve auxílio de ferramentas de IA na elaboração de código, conforme informado pela equipe.
+
+Em conformidade com as diretrizes éticas e recomendações da disciplina sobre o uso responsável de modelos de linguagem de grande porte (LLMs), esses são os (\textit{prompts}) submetidos ao assistente ao longo das fases de concepção, codificação e validação empírica.
+
+\begin{quote}
+\small
+\textit{``Quero que analise o propósito do trabalho e utilize as melhores práticas em python e análise de dados exploratória para entender a API do trabalho e como poder extrair suas informações. No reposório, há as especificações do trabalho de fundamentos de IA, minha equipe escolheu essa API para extrair os dados do site  https://apidadosabertos.saude.gov.br/v1 da rota Vacinacao/get\_vacinacao\_doses\_aplicadas\_pni\_2020 de 2020 até 2026. Se forem muitos dados, reduza para os anos mais atuais. Dê uma olhada no trabalho, faça um plano de implementação e me diga no final o que você irá fazer. Pode analisar a API e os dados para ter uma ideia do que ser feito. O domínio do nosso projeto é "Saúde Pública". Para ler o documento pdf, sugiro fazer um markdown dele para consultá-lo''}
+\end{quote}
+
+\begin{quote}
+\small
+\textit{``Me fale dos resultados que encontrou que são interessantes para a conclusão. Primeiro fala de cada etapa. Então faça uma conclusão reunindo todas as evidências de todas as etapas.''}
+\end{quote}
+
+\begin{quote}
+\small
+\textit{``Quantas amostras foram usadas? Para treinamento e teste? Em relação às regiões? Ficou bem dividido?''}
+\end{quote}
+
+\begin{quote}
+\small
+\textit{``O que você quis dizer com validação da independência condicional e limitação da lógica clássica?''}
+\end{quote}
+
+\begin{quote}
+\small
+\textit{``Mas por que apenas o dado de Pfizer e Idoso? Não deveria ser de vários?''}
+\end{quote}
+
+\begin{quote}
+\small
+\textit{``Explique melhor essa etapa 4. O que ela significa? O que é prior conjugada de Beta(2,2)? O que isso significa na prática?''}
+\end{quote}
+
+\begin{quote}
+\small
+\textit{``Por que o fabricante influencia se vai atrasar?''}
+\end{quote}
+
+\begin{quote}
+\small
+\textit{``Explique a etapa 6 e o que a tarefa pedia.''}
+\end{quote}
+
+\end{document}
+
+\bibliographystyle{sbc}
+\bibliography{referencias}
